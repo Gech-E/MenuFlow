@@ -48,6 +48,8 @@ export async function bootDatabase({ beforeUpgrade } = {}) {
     writeFileSync(pwfile, password + "\n", { mode: 0o600 });
     run("initdb", ["-D", data, "-U", "postgres", "-A", "scram-sha-256", "--pwfile", pwfile, "--no-locale", "--encoding=UTF8"]);
     rmSync(pwfile);
+    // This disposable cluster serves TCP clients only, including on CI runners.
+    writeFileSync(path.join(data, "postgresql.auto.conf"), "unix_socket_directories = ''\n");
     run("pg_ctl", ["-D", data, "-l", path.join(work, "postgres.log"), "-w", "-o", "-h 127.0.0.1 -p " + port, "start"]);
     started = true;
     pool = new pg.Pool({ host: "127.0.0.1", port, user: "postgres", database: "postgres", password, max: 12 });
