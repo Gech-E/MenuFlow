@@ -33,7 +33,8 @@ test("isolated guest and staff browsers complete a restaurant visit and record o
   await button("Save category").click();
   await button("New menu item").click();
   await staff.getByLabel("Item name",{exact:true}).fill("Macchiato");
-  await staff.getByLabel("Category",{exact:true}).selectOption({label:"Coffee"});
+  await staff.getByRole("dialog", { name: "New menu item" })
+    .getByRole("combobox", { name: /^Category\b/ }).selectOption({ label: "Coffee" });
   await staff.getByLabel("Price (ETB)",{exact:true}).fill("100");
   await button("Save menu item").click();
   await expect(staff.getByRole("dialog")).toHaveCount(0);
@@ -43,8 +44,9 @@ test("isolated guest and staff browsers complete a restaurant visit and record o
   await staff.getByLabel("Table number").fill("1");
   await button("Save table").click();
   await button("Show QR code").click();
-  const tableURL = await staff.getByRole("link",{name:"Open table menu"}).getAttribute("href");
-  expect(tableURL).toMatch(/\/t\/[0-9a-f-]{36}$/);
+  const tableLink = staff.getByRole("link", { name: "Open table menu" });
+  await expect(tableLink).toHaveAttribute("href", /\/t\/[0-9a-f-]{36}$/);
+  const tableURL = await tableLink.getAttribute("href");
   const download = staff.waitForEvent("download");
   await button("Download SVG").click();
   expect((await download).suggestedFilename()).toMatch(/\.svg$/);
@@ -68,6 +70,8 @@ test("isolated guest and staff browsers complete a restaurant visit and record o
     await expect(guest.getByText(/Order received ·/)).toBeVisible();
     await button("Kitchen").click();
     for (const next of ["Accept","Start preparing","Mark ready","Mark served"]) await button(next).click();
+    await expect(guest.locator("article").filter({ hasText: "Macchiato" }))
+      .toContainText(/served/i);
     await guestButton("Bill").click();
     const tip = guest.getByRole("radio",{name:"10%",exact:true});
     await expect(tip).not.toBeChecked();
