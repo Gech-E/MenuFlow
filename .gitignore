@@ -2,3 +2,10 @@ node_modules
 .next
 .env*
 !.env.example
+*.tsbuildinfo
+.vercel/
+.local/
+test-results/
+playwright-report/
+supabase/.temp/
+supabase/.branches/

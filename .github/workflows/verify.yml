@@ -1,0 +1,67 @@
+name: Verify MenuFlow
+
+on:
+  pull_request:
+  push:
+    branches: [main, "feature/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      APP_ORIGIN: http://127.0.0.1:3000
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+      MENUFLOW_E2E_AUTH: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Run isolated PostgreSQL migration and authorization tests
+        env:
+          PG_BINDIR: /usr/lib/postgresql/16/bin
+        run: |
+          if ! test -x "$PG_BINDIR/initdb" || ! test -f /usr/share/postgresql/16/extension/pgcrypto.control; then
+            sudo apt-get update -qq
+            sudo apt-get install -y postgresql-16 postgresql-contrib
+          fi
+          npm run test:db
+      - uses: supabase/setup-cli@v1
+        with:
+          version: "2.65.5"
+      - name: Start local Supabase Auth, PostgreSQL and Data API with project migrations
+        run: |
+          # Startup/status can print local service credentials. Keep only the public
+          # client key in the environment used to build and exercise the application.
+          if ! supabase start >/dev/null 2>&1; then
+            docker ps -a --format '{{.Names}} {{.Status}}'
+            exit 1
+          fi
+          public_key="$(supabase status -o env | sed -n 's/^ANON_KEY="\([^"]*\)"$/\1/p')"
+          test -n "$public_key"
+          echo "::add-mask::$public_key"
+          printf 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=%s\n' "$public_key" >> "$GITHUB_ENV"
+      - run: npm run build
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Run browser journeys against local Supabase
+        run: npm run test:e2e
+      - name: Stop local services
+        if: always()
+        run: |
+          if command -v supabase >/dev/null; then
+            supabase stop --no-backup >/dev/null
+          fi

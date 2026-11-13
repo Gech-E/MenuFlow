@@ -1,19 +1,436 @@
 "use client";
-import {useEffect,useState} from "react";
-import {createClient} from "@/utils/supabase/client";
-import {QRCodeSVG} from "qrcode.react";
-type Order={id:string;table_number:number;status:string;total:number;tip:number;note:string;created_at:string;order_items:{name:string;quantity:number}[]};
-type Menu={id:string;name:string;category:string;price:number;available:boolean};
-export default function Staff(){
- const [qrTable,setQrTable]=useState("1"),[origin,setOrigin]=useState(""),[unread,setUnread]=useState(0),[notify,setNotify]=useState(false),[email,setEmail]=useState(""),[password,setPassword]=useState(""),[user,setUser]=useState(false),[orders,setOrders]=useState<Order[]>([]),[menu,setMenu]=useState<Menu[]>([]),[error,setError]=useState(""),[restaurant,setRestaurant]=useState(""),[newItem,setNewItem]=useState({name:"",category:"Drinks",price:"",description:""});
- const supabase=createClient();
- useEffect(()=>{setOrigin(window.location.origin)},[]);
- useEffect(()=>{if(!notify||!restaurant)return;const channel=supabase.channel("staff-order-alerts-"+restaurant).on("postgres_changes",{event:"INSERT",schema:"public",table:"orders",filter:"restaurant_id=eq."+restaurant},()=>{setUnread(n=>n+1);void load()}).subscribe();return()=>{void supabase.removeChannel(channel)}},[notify,restaurant]);
- async function load(){const {data:auth}=await supabase.auth.getUser();setUser(!!auth.user);if(!auth.user)return;const {data:membership}=await supabase.from("staff_members").select("restaurant_id").limit(1).maybeSingle();if(!membership){setError("Your account is not assigned to a restaurant. Ask the owner to add your user ID to staff_members.");return}setRestaurant(membership.restaurant_id);const [o,m]=await Promise.all([supabase.from("orders").select("id,table_number,status,total,tip,note,created_at,order_items(name,quantity)").eq("restaurant_id",membership.restaurant_id).order("created_at",{ascending:false}).limit(100),supabase.from("menu_items").select("id,name,category,price,available").eq("restaurant_id",membership.restaurant_id).order("name")]);if(o.error)setError(o.error.message);else setOrders((o.data||[]) as Order[]);if(m.error)setError(m.error.message);else setMenu(m.data||[])}
- useEffect(()=>{void load();const interval=setInterval(()=>void load(),5000);return()=>clearInterval(interval)},[]);
- async function signIn(e:React.FormEvent){e.preventDefault();const {error}=await supabase.auth.signInWithPassword({email,password});if(error)setError(error.message);else{setError("");setPassword("");await load()}}
- async function status(id:string,value:string){const {error}=await supabase.from("orders").update({status:value}).eq("id",id);if(error)setError(error.message);else await load()}
- async function toggle(id:string,available:boolean){const {error}=await supabase.from("menu_items").update({available}).eq("id",id);if(error)setError(error.message);else await load()}
- async function add(e:React.FormEvent){e.preventDefault();const {error}=await supabase.from("menu_items").insert({restaurant_id:restaurant,name:newItem.name,category:newItem.category,price:Number(newItem.price),description:newItem.description,emoji:"🍽️"});if(error)setError(error.message);else{setNewItem({name:"",category:"Drinks",price:"",description:""});await load()}}
- return <main className="mx-auto max-w-5xl px-5 py-10"><header className="flex items-center justify-between"><a href="/live" className="text-2xl font-black">MenuFlow<span className="text-emerald-600">.</span></a>{user&&<button className="rounded-xl border px-4 py-2" onClick={async()=>{await supabase.auth.signOut();setUser(false);setOrders([]);setMenu([])}}>Sign out</button>}</header><h1 className="mt-12 text-4xl font-black">Restaurant dashboard</h1>{error&&<p role="alert" className="mt-4 rounded-xl bg-red-50 p-4 text-red-800">{error}</p>}{!user?<form onSubmit={signIn} className="mt-8 max-w-md space-y-4 rounded-2xl border bg-white p-6"><h2 className="text-xl font-bold">Staff sign in</h2><input type="email" required placeholder="Email" className="w-full rounded-xl border p-3" value={email} onChange={e=>setEmail(e.target.value)}/><input type="password" required placeholder="Password" className="w-full rounded-xl border p-3" value={password} onChange={e=>setPassword(e.target.value)}/><button className="w-full rounded-xl bg-black p-3 text-white">Sign in</button></form>:<><div className="mt-6 flex items-center justify-between"><h2 className="text-2xl font-bold">Orders {unread>0&&<span className="ml-2 rounded-full bg-emerald-600 px-3 py-1 text-sm text-white">{unread} new</span>}</h2><button className="rounded-xl border px-4 py-2" onClick={()=>{setUnread(0);void load()}}>Refresh</button></div><div className="mt-4 space-y-3">{orders.length===0?<p className="rounded-xl border bg-white p-6 text-neutral-500">No orders yet.</p>:orders.map(o=><article key={o.id} className="rounded-2xl border bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><b>Table {o.table_number} · #{o.id.slice(0,8).toUpperCase()}</b><p className="text-xs text-neutral-500">{new Date(o.created_at).toLocaleString()}</p></div><select aria-label="Order status" className="rounded-xl border p-2" value={o.status} onChange={e=>void status(o.id,e.target.value)}>{["new","preparing","ready","served","cancelled"].map(s=><option key={s}>{s}</option>)}</select></div><p className="mt-3 text-sm">{o.order_items.map(i=>`${i.quantity}× ${i.name}`).join(" · ")}</p>{o.note&&<p className="mt-2 text-sm text-neutral-500">Note: {o.note}</p>}<p className="mt-3 font-bold">{Number(o.total).toLocaleString()} ETB <span className="text-xs font-normal text-neutral-500">incl. {o.tip} ETB tip</span></p></article>)}</div><section className="mt-10 rounded-2xl border bg-white p-6"><h2 className="text-2xl font-bold">Table QR codes</h2><p className="mt-2 text-sm text-neutral-500">Print or share a code for each table. Customers scan it to order.</p><label className="mt-5 flex items-center gap-3 text-sm font-semibold">Table <input inputMode="numeric" aria-label="QR table number" className="w-20 rounded-xl border p-3" value={qrTable} onChange={e=>setQrTable(e.target.value.replace(/\\D/g,"").slice(0,3))}/></label>{origin&&Number(qrTable)>0&&Number(qrTable)<=999&&<div className="mt-5 inline-flex flex-col items-center gap-4 rounded-2xl border p-5"><QRCodeSVG id="menuflow-table-qr" value={origin+"/live?table="+qrTable} size={190} marginSize={2}/><b>Table {qrTable}</b><a className="max-w-64 break-all text-center text-xs text-emerald-700 underline" href={origin+"/live?table="+qrTable} target="_blank" rel="noreferrer">{origin+"/live?table="+qrTable}</a><button className="rounded-xl bg-black px-4 py-2 text-sm text-white" onClick={()=>{const svg=document.getElementById("menuflow-table-qr");if(!svg)return;const blob=new Blob([new XMLSerializer().serializeToString(svg)],{type:"image/svg+xml"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="menuflow-table-"+qrTable+".svg";a.click();URL.revokeObjectURL(url)}}>Download QR code</button></div>}</section><section className="mt-6 rounded-2xl border bg-white p-6"><h2 className="text-xl font-bold">Order notifications</h2><p className="mt-2 text-sm text-neutral-500">Enable live order alerts while this dashboard is open. Automatic refresh still runs every five seconds.</p><button onClick={()=>{setNotify(v=>!v);setUnread(0)}} className="mt-4 rounded-xl bg-black px-5 py-3 text-sm font-semibold text-white">{notify?"Disable live alerts":"Enable live alerts"}</button><p className="mt-2 text-xs text-neutral-500">Requires Supabase Realtime publication for the orders table. This provides in-page alerts, not background push notifications.</p></section><h2 className="mt-12 text-2xl font-bold">Menu management</h2><form onSubmit={add} className="mt-4 grid gap-3 rounded-2xl border bg-white p-5 sm:grid-cols-2"><input required maxLength={120} className="rounded-xl border p-3" placeholder="Item name" value={newItem.name} onChange={e=>setNewItem({...newItem,name:e.target.value})}/><input required min="1" type="number" className="rounded-xl border p-3" placeholder="Price ETB" value={newItem.price} onChange={e=>setNewItem({...newItem,price:e.target.value})}/><input required className="rounded-xl border p-3" placeholder="Category" value={newItem.category} onChange={e=>setNewItem({...newItem,category:e.target.value})}/><input className="rounded-xl border p-3" placeholder="Description" value={newItem.description} onChange={e=>setNewItem({...newItem,description:e.target.value})}/><button disabled={!restaurant} className="rounded-xl bg-black p-3 text-white disabled:opacity-40">Add menu item</button></form><div className="mt-5 overflow-hidden rounded-2xl border bg-white">{menu.map(m=><div key={m.id} className="flex items-center justify-between border-b p-4 last:border-0"><div><b>{m.name}</b><p className="text-sm text-neutral-500">{m.category} · {m.price} ETB</p></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={m.available} onChange={e=>void toggle(m.id,e.target.checked)}/> Available</label></div>)}</div></>}</main>
+import { useEffect, useState } from "react";
+import {
+  BarChart3,
+  BellRing,
+  BookOpen,
+  ChefHat,
+  ClipboardList,
+  LayoutDashboard,
+  LogOut,
+  ReceiptText,
+  RefreshCw,
+  Settings2,
+  ShieldCheck,
+  Table2,
+  Tag,
+  Users,
+} from "lucide-react";
+import Link from "next/link";
+import { createClient } from "@/utils/supabase/client";
+import { api } from "@/lib/ui-api";
+import {
+  Command,
+  Context,
+  Membership,
+  StaffState,
+  Workspace,
+} from "@/lib/ui-models";
+import { useResource } from "@/lib/ui-resource";
+import { Brand, Empty, Field, Header, Notice } from "../components/chrome";
+import { AuthScreen } from "../components/auth-screen";
+import { Action, ActionForm, value } from "../components/actions";
+import { Catalog } from "../components/catalog";
+import { Platform, Settings, Tables, Team } from "../components/management";
+import { Billing, Orders, Service, Stats } from "../components/operations";
+
+const views = [
+  { id: "overview", name: "Overview", icon: LayoutDashboard, roles: [] },
+  { id: "orders", name: "Live orders", icon: ClipboardList, roles: [] },
+  { id: "kitchen", name: "Kitchen", icon: ChefHat, roles: ["KITCHEN"] },
+  {
+    id: "tables",
+    name: "Tables & QR",
+    icon: Table2,
+    roles: ["OWNER", "MANAGER", "WAITER"],
+  },
+  {
+    id: "service",
+    name: "Service requests",
+    icon: BellRing,
+    roles: ["OWNER", "MANAGER", "WAITER"],
+  },
+  {
+    id: "menu",
+    name: "Menu",
+    icon: BookOpen,
+    roles: ["OWNER", "MANAGER", "KITCHEN"],
+  },
+  {
+    id: "specials",
+    name: "Daily specials",
+    icon: Tag,
+    roles: ["OWNER", "MANAGER", "KITCHEN"],
+  },
+  {
+    id: "billing",
+    name: "Billing",
+    icon: ReceiptText,
+    roles: ["OWNER", "MANAGER", "WAITER", "CASHIER"],
+  },
+  { id: "team", name: "Staff", icon: Users, roles: ["OWNER", "MANAGER"] },
+  {
+    id: "analytics",
+    name: "Analytics",
+    icon: BarChart3,
+    roles: ["OWNER", "MANAGER"],
+  },
+  {
+    id: "settings",
+    name: "Settings",
+    icon: Settings2,
+    roles: ["OWNER", "MANAGER"],
+  },
+  { id: "platform", name: "Platform", icon: ShieldCheck, roles: [] },
+];
+async function signOut() {
+  const { error } = await createClient().auth.signOut();
+  if (error) throw error;
+  location.replace("/staff");
+}
+function Onboard({ reload }: { reload: () => Promise<void> }) {
+  return (
+    <div className="site">
+      <Header />
+      <main id="content" className="auth-wrap">
+        <section className="auth-card">
+          <p className="eyebrow">Restaurant setup</p>
+          <h1>Create your restaurant</h1>
+          <p>Start with your restaurant and its first branch.</p>
+          <ActionForm
+            submit="Create restaurant"
+            onSubmit={async (f) => {
+              await api("management", {
+                action: "onboard",
+                data: {
+                  name: value(f, "name"),
+                  branchName: value(f, "branchName"),
+                },
+              });
+              await reload();
+            }}
+          >
+            <Field label="Restaurant name">
+              <input required name="name" maxLength={120} />
+            </Field>
+            <Field label="Branch name">
+              <input required name="branchName" maxLength={120} />
+            </Field>
+          </ActionForm>
+          <div className="auth-links">
+            <Link href="/invite">Join with an invitation</Link>
+            <Action doAction={signOut}>Sign out</Action>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+export default function Staff() {
+  const ctx = useResource<Context>("management/context", 30000);
+  const [selected, setSelected] = useState("");
+  if (ctx.status === 401) return <AuthScreen />;
+  if (ctx.error || !ctx.data)
+    return (
+      <div className="site">
+        <Header />
+        <main id="content" className="narrow">
+          {ctx.error ? (
+            <>
+              <Notice error>{ctx.error}</Notice>
+              <button className="btn" onClick={() => void ctx.refresh()}>
+                Retry
+              </button>
+            </>
+          ) : (
+            <Notice>Opening workspace…</Notice>
+          )}
+        </main>
+      </div>
+    );
+  if (!ctx.data.branches.length && ctx.data.platformAdmin)
+    return (
+      <div className="site">
+        <Header />
+        <main id="content" className="main-inner stack">
+          <h1>Platform administration</h1>
+          <Platform />
+          <Action doAction={signOut}>Sign out</Action>
+        </main>
+      </div>
+    );
+  if (!ctx.data.branches.length) return <Onboard reload={ctx.refresh} />;
+  const member =
+    ctx.data.branches.find((b) => b.id === selected) ?? ctx.data.branches[0];
+  return (
+    <StaffWorkspace
+      key={member.id}
+      member={member}
+      context={ctx.data}
+      reload={ctx.refresh}
+      select={setSelected}
+    />
+  );
+}
+function StaffWorkspace({
+  member,
+  context,
+  reload,
+  select,
+}: {
+  member: Membership;
+  context: Context;
+  reload: () => Promise<void>;
+  select: (id: string) => void;
+}) {
+  const available = views.filter((v) =>
+    v.id === "platform"
+      ? context.platformAdmin
+      : !v.roles.length || v.roles.some((r) => member.roles.includes(r)),
+  );
+  const [view, setView] = useState("overview"),
+    [range, setRange] = useState({ from: "", to: "" });
+  useEffect(() => {
+    const update = () => {
+      const hash = location.hash.slice(1);
+      if (views.some((v) => v.id === hash)) setView(hash);
+    };
+    update();
+    window.addEventListener("hashchange", update);
+    return () => window.removeEventListener("hashchange", update);
+  }, []);
+  const active = available.find((v) => v.id === view) ?? available[0];
+  const query = new URLSearchParams({
+    view: "staff",
+    branchId: member.id,
+    restaurantId: member.restaurantId,
+  });
+  if (range.from) query.set("from", range.from);
+  if (range.to) query.set("to", range.to);
+  const ws = useResource<Workspace>("management?branchId=" + member.id, 20000),
+    op = useResource<StaffState>("operations?" + query, 4000);
+  async function refresh() {
+    await Promise.all([ws.refresh(), op.refresh(), reload()]);
+  }
+  const manage: Command = async (action, data = {}) => {
+    const result = await api<Record<string, unknown>>("management", {
+      action,
+      branchId: member.id,
+      data,
+    });
+    await ws.refresh();
+    if (action.startsWith("branch.") || action === "profile.update")
+      await reload();
+    return result;
+  };
+  const ops: Command = async (action, data = {}) => {
+    const result = await api<Record<string, unknown>>("operations", {
+      action,
+      branchId: member.id,
+      restaurantId: member.restaurantId,
+      ...data,
+    });
+    await op.refresh();
+    return result;
+  };
+  const manager =
+    member.roles.includes("OWNER") || member.roles.includes("MANAGER");
+  const go = (id: string) => {
+    setView(id);
+    history.replaceState(null, "", "#" + id);
+  };
+  const w = ws.data,
+    d = op.data,
+    id = active.id;
+  return (
+    <div className="workspace">
+      <aside className="sidebar">
+        <Brand />
+        <nav className="nav" aria-label="Staff navigation">
+          {available.map((v) => (
+            <button
+              key={v.id}
+              className={"nav-item " + (id === v.id ? "active" : "")}
+              aria-current={id === v.id ? "page" : undefined}
+              onClick={() => go(v.id)}
+            >
+              <v.icon size={18} />
+              {v.name}
+            </button>
+          ))}
+        </nav>
+        <div className="account">
+          <small>{context.email}</small>
+          <Action className="text-link" doAction={signOut}>
+            <LogOut size={15} />
+            Sign out
+          </Action>
+        </div>
+      </aside>
+      <main className="app-main" id="content">
+        <header className="app-top">
+          <div>
+            <strong>{member.restaurantName}</strong>
+            <p className="hint">Staff workspace</p>
+          </div>
+          <div className="actions">
+            <select
+              aria-label="Active branch"
+              value={member.id}
+              onChange={(e) => select(e.target.value)}
+            >
+              {context.branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.restaurantName} · {b.name}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn icon"
+              aria-label="Refresh workspace"
+              onClick={() => void refresh()}
+            >
+              <RefreshCw size={16} />
+            </button>
+            <span className="mobile-signout" style={{ display: "none" }}>
+              <Action className="btn small" doAction={signOut}>
+                Sign out
+              </Action>
+            </span>
+          </div>
+        </header>
+        <div className="main-inner stack">
+          <div className="page-head">
+            <p className="eyebrow">
+              <span className="dot" />
+              {member.name}
+            </p>
+            <h1>{active.name}</h1>
+          </div>
+          {ws.error && <Notice error>{ws.error}</Notice>}
+          {op.error && <Notice error>{op.error}</Notice>}
+          {(id === "billing" || id === "analytics") && (
+            <details className="panel">
+              <summary>Report date range</summary>
+              <ActionForm
+                submit="Apply dates"
+                onSubmit={async (f) => {
+                  const from = value(f, "from"),
+                    to = value(f, "to");
+                  if (to < from)
+                    throw new Error("End date must be on or after start date.");
+                  setRange({ from, to });
+                }}
+              >
+                <div className="form-grid">
+                  <Field label="Start date">
+                    <input
+                      type="date"
+                      required
+                      name="from"
+                      defaultValue={range.from}
+                    />
+                  </Field>
+                  <Field label="End date">
+                    <input
+                      type="date"
+                      required
+                      name="to"
+                      defaultValue={range.to}
+                    />
+                  </Field>
+                </div>
+              </ActionForm>
+              <button
+                className="text-link"
+                onClick={() => setRange({ from: "", to: "" })}
+              >
+                Show today
+              </button>
+            </details>
+          )}
+          {id === "overview" &&
+            (d ? (
+              <>
+                <Stats data={d} />
+                <section className="panel">
+                  <div className="panel-head">
+                    <h2>Recent orders</h2>
+                    <button className="text-link" onClick={() => go("orders")}>
+                      View all orders
+                    </button>
+                  </div>
+                  {d.orders.length ? (
+                    d.orders.slice(0, 5).map((o) => (
+                      <div className="line" key={o.id}>
+                        <div>
+                          <strong>{o.table_label}</strong>
+                          <p>
+                            {o.items
+                              .map((l) => l.quantity + " × " + l.name)
+                              .join(", ")}
+                          </p>
+                        </div>
+                        <span className="pill">{o.status}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <Empty title="No orders yet">
+                      Orders appear here when guests submit them from their
+                      table.
+                    </Empty>
+                  )}
+                </section>
+              </>
+            ) : (
+              <Notice>Loading operations…</Notice>
+            ))}
+          {(id === "menu" || id === "specials") && w && (
+            <Catalog
+              workspace={w}
+              manage={manage}
+              edit={manager}
+              onlySpecials={id === "specials"}
+            />
+          )}
+          {id === "tables" && w && (
+            <Tables w={w} state={d} manage={manage} ops={ops} member={member} />
+          )}
+          {(id === "orders" || id === "kitchen") && d && (
+            <Orders
+              key={id}
+              member={member}
+              data={d}
+              ops={ops}
+              queue={id === "kitchen"}
+            />
+          )}
+          {id === "service" && d && <Service data={d} ops={ops} />}
+          {id === "billing" && d && (
+            <Billing data={d} ops={ops} member={member} />
+          )}
+          {id === "team" && w && (
+            <Team
+              w={w}
+              manage={manage}
+              self={context.userId}
+              owner={member.roles.includes("OWNER")}
+            />
+          )}
+          {id === "analytics" && d && <Stats data={d} expanded />}
+          {id === "settings" && w && (
+            <Settings
+              w={w}
+              manage={manage}
+              owner={member.roles.includes("OWNER")}
+            />
+          )}
+          {id === "platform" && <Platform />}
+          {id !== "overview" && (ws.loading || op.loading) && (
+            <p role="status">Loading workspace…</p>
+          )}
+        </div>
+      </main>
+    </div>
+  );
 }

@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test:db": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test": "npm run test:db"
   },
   "dependencies": {
     "next": "^15.5.0",
@@ -15,7 +19,12 @@
     "lucide-react": "^0.468.0",
     "@supabase/supabase-js": "^2.57.0",
     "@supabase/ssr": "^0.6.1",
-    "qrcode.react": "^4.2.0"
+    "qrcode.react": "^4.2.0",
+    "sharp": "^0.35.5"
+  },
+  "overrides": {
+    "postcss": "^8.5.23",
+    "next": { "sharp": "$sharp" }
   },
   "devDependencies": {
     "typescript": "^5.9.0",
@@ -25,6 +34,9 @@
     "tailwindcss": "^4.1.0",
     "@tailwindcss/postcss": "^4.1.0",
     "eslint": "^9.0.0",
-    "eslint-config-next": "^15.5.0"
+    "eslint-config-next": "^15.5.0",
+    "@eslint/eslintrc": "^3.3.0",
+    "@playwright/test": "^1.56.0",
+    "pg": "^8.16.0"
   }
 }
