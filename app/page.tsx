@@ -1,29 +1,96 @@
-"use client";
-import {useEffect,useMemo,useState} from "react";
-import {starter,type Item} from "@/lib/data";
-import {ShoppingBag,Plus,Minus,ArrowRight,Check,ChefHat,ReceiptText,LayoutDashboard,UtensilsCrossed} from "lucide-react";
-type Order={id:string;table:string;items:{id:string;name:string;qty:number;price:number}[];subtotal:number;tip:number;total:number;status:"new"|"preparing"|"ready"|"served";createdAt:string;note:string};
-const key="menuflow-mvp-v1";
-const money=(n:number)=>n.toLocaleString("en-ET")+" ETB";
-export default function Home(){
-const [tab,setTab]=useState<"menu"|"dashboard">("menu"),[items,setItems]=useState<Item[]>(starter),[orders,setOrders]=useState<Order[]>([]),[cart,setCart]=useState<Record<string,number>>({}),[table,setTable]=useState("1"),[category,setCategory]=useState("All"),[tip,setTip]=useState(0),[note,setNote]=useState(""),[checkout,setCheckout]=useState(false),[success,setSuccess]=useState(""),[hydrated,setHydrated]=useState(false),[adding,setAdding]=useState(false),[draft,setDraft]=useState({name:"",category:"Ethiopian",price:"",description:""});
-useEffect(()=>{try{const saved=JSON.parse(localStorage.getItem(key)||"{}");if(saved.items)setItems(saved.items);if(saved.orders)setOrders(saved.orders)}catch{};const t=new URLSearchParams(location.search).get("table");if(t&&/^\d{1,3}$/.test(t))setTable(t);setHydrated(true)},[]);
-useEffect(()=>{if(hydrated)localStorage.setItem(key,JSON.stringify({items,orders}))},[items,orders,hydrated]);
-const categories=["All",...new Set(items.map(x=>x.category))];
-const subtotal=items.reduce((s,x)=>s+x.price*(cart[x.id]||0),0);
-const count=Object.values(cart).reduce((s,n)=>s+n,0);
-const total=subtotal+Math.round(subtotal*tip/100);
-const change=(id:string,d:number)=>setCart(c=>({...c,[id]:Math.max(0,(c[id]||0)+d)}));
-const place=()=>{if(!count)return;const order:Order={id:crypto.randomUUID(),table,items:items.filter(x=>cart[x.id]).map(x=>({id:x.id,name:x.name,price:x.price,qty:cart[x.id]})),subtotal,tip:Math.round(subtotal*tip/100),total,status:"new",createdAt:new Date().toISOString(),note};setOrders(o=>[order,...o]);setCart({});setCheckout(false);setNote("");setTip(0);setSuccess(order.id.slice(0,8).toUpperCase());};
-return <main className="min-h-screen"><header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/95 backdrop-blur"><div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4"><div className="flex items-center gap-2 text-xl font-black tracking-tight"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-950 text-white"><UtensilsCrossed size={18}/></span>MenuFlow<span className="text-emerald-600">.</span></div><nav className="flex gap-1 rounded-xl bg-neutral-100 p-1 text-sm font-semibold"><button onClick={()=>{setTab("menu");setCheckout(false)}} className={`rounded-lg px-4 py-2 ${tab==="menu"?"bg-white shadow-sm":""}`}>Menu</button><button onClick={()=>{setTab("dashboard");setCheckout(false)}} className={`rounded-lg px-4 py-2 ${tab==="dashboard"?"bg-white shadow-sm":""}`}>Dashboard</button></nav></div></header>
-{tab==="menu"?<div className="mx-auto max-w-6xl px-5 pb-32"><section className="py-12 md:py-16"><div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">● Open for orders</div><h1 className="max-w-xl text-4xl font-black tracking-tight md:text-6xl">Good food.<br/>Zero waiting.</h1><p className="mt-4 max-w-lg text-neutral-500">Explore today's menu, order from your table, and enjoy every bite.</p><label className="mt-7 inline-flex items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold">Your table <input aria-label="Table number" className="w-14 border-b border-neutral-300 bg-transparent text-center" value={table} onChange={e=>setTable(e.target.value.replace(/\D/g,"").slice(0,3))}/></label></section>
-{success&&<div className="mb-8 flex items-center justify-between rounded-2xl bg-emerald-50 p-5 text-emerald-900"><div><b>Order placed successfully!</b><p className="text-sm">Reference #{success}. Please wait for your server.</p></div><button onClick={()=>setSuccess("")} aria-label="Dismiss">✕</button></div>}
-<div className="mb-7 flex flex-wrap gap-2">{categories.map(c=><button key={c} onClick={()=>setCategory(c)} className={`rounded-full px-5 py-2 text-sm font-semibold ${category===c?"bg-neutral-950 text-white":"border border-neutral-200 bg-white text-neutral-600"}`}>{c}</button>)}</div>
-<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{items.filter(x=>x.available&&(category==="All"||x.category===category)).map(x=><article key={x.id} className="overflow-hidden rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm"><div className="mb-5 flex h-32 items-center justify-center rounded-2xl bg-stone-100 text-7xl">{x.emoji}</div><p className="text-xs font-bold uppercase tracking-wider text-emerald-700">{x.category}</p><h3 className="mt-2 text-xl font-bold">{x.name}</h3><p className="mt-2 min-h-11 text-sm text-neutral-500">{x.description}</p><div className="mt-5 flex items-center justify-between"><b>{money(x.price)}</b>{cart[x.id]?<div className="flex items-center gap-3"><button aria-label="Remove one" onClick={()=>change(x.id,-1)} className="rounded-full bg-neutral-100 p-2"><Minus size={16}/></button><b>{cart[x.id]}</b><button aria-label="Add one" onClick={()=>change(x.id,1)} className="rounded-full bg-neutral-950 p-2 text-white"><Plus size={16}/></button></div>:<button onClick={()=>change(x.id,1)} className="flex items-center gap-1 rounded-full bg-neutral-950 px-4 py-2 text-sm font-semibold text-white"><Plus size={16}/> Add</button>}</div></article>)}</div>
-{count>0&&<div className="fixed bottom-5 left-1/2 z-30 w-[calc(100%-40px)] max-w-lg -translate-x-1/2"><button onClick={()=>setCheckout(true)} className="flex w-full items-center justify-between rounded-2xl bg-neutral-950 px-6 py-5 font-bold text-white shadow-2xl"><span className="flex items-center gap-2"><ShoppingBag size={19}/> View order ({count})</span><span>{money(subtotal)} →</span></button></div>}</div>:<div className="mx-auto max-w-6xl px-5 py-12"><div className="mb-9 flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm font-semibold text-emerald-700">RESTAURANT OPERATIONS</p><h1 className="mt-2 text-4xl font-black">Dashboard</h1><p className="mt-2 text-neutral-500">Manage your menu and incoming orders.</p></div><button onClick={()=>setAdding(!adding)} className="rounded-xl bg-neutral-950 px-5 py-3 text-sm font-semibold text-white">+ Add menu item</button></div>
-<div className="mb-8 grid gap-4 sm:grid-cols-3">{[["Total orders",orders.length],["New orders",orders.filter(o=>o.status==="new").length],["Sales (ETB)",orders.filter(o=>o.status==="served").reduce((s,o)=>s+o.total,0).toLocaleString()]].map(([k,v])=><div key={k} className="rounded-2xl border border-neutral-200 bg-white p-6"><p className="text-sm text-neutral-500">{k}</p><p className="mt-3 text-3xl font-black">{v}</p></div>)}</div>
-{adding&&<form onSubmit={e=>{e.preventDefault();if(!draft.name.trim()||!(Number(draft.price)>0))return;setItems(v=>[...v,{id:crypto.randomUUID(),name:draft.name.trim(),category:draft.category,price:Number(draft.price),description:draft.description,emoji:"🍽️",available:true}]);setDraft({name:"",category:"Ethiopian",price:"",description:""});setAdding(false)}} className="mb-8 grid gap-3 rounded-2xl border bg-white p-5 sm:grid-cols-2"><input required placeholder="Item name" className="rounded-xl border p-3" value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})}/><input required type="number" min="1" placeholder="Price in ETB" className="rounded-xl border p-3" value={draft.price} onChange={e=>setDraft({...draft,price:e.target.value})}/><input placeholder="Category" className="rounded-xl border p-3" value={draft.category} onChange={e=>setDraft({...draft,category:e.target.value})}/><input placeholder="Description" className="rounded-xl border p-3" value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})}/><button className="rounded-xl bg-neutral-950 p-3 font-semibold text-white">Save item</button></form>}
-<h2 className="mb-4 flex items-center gap-2 text-xl font-bold"><ChefHat size={21}/> Live orders</h2><div className="space-y-3">{orders.length===0?<div className="rounded-2xl border border-dashed bg-white p-10 text-center text-neutral-500">No orders yet. Place a test order from the Menu tab.</div>:orders.map(o=><div key={o.id} className="rounded-2xl border bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><b>Table {o.table} · #{o.id.slice(0,8).toUpperCase()}</b><p className="text-xs text-neutral-500">{new Date(o.createdAt).toLocaleString()}</p></div><select aria-label="Order status" value={o.status} onChange={e=>setOrders(v=>v.map(x=>x.id===o.id?{...x,status:e.target.value as Order["status"]}:x))} className="rounded-lg border bg-neutral-50 px-3 py-2 text-sm font-semibold">{["new","preparing","ready","served"].map(s=><option key={s} value={s}>{s}</option>)}</select></div><p className="mt-3 text-sm text-neutral-600">{o.items.map(i=>`${i.qty}× ${i.name}`).join(" · ")}</p>{o.note&&<p className="mt-2 text-sm italic">Note: {o.note}</p>}<p className="mt-3 font-bold">{money(o.total)} <span className="text-xs font-normal text-neutral-500">(incl. {money(o.tip)} tip)</span></p></div>)}</div>
-<h2 className="mb-4 mt-12 text-xl font-bold">Menu availability</h2><div className="overflow-hidden rounded-2xl border bg-white">{items.map(x=><div key={x.id} className="flex items-center justify-between gap-3 border-b p-4 last:border-0"><div><b>{x.name}</b><p className="text-sm text-neutral-500">{money(x.price)}</p></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={x.available} onChange={e=>setItems(v=>v.map(i=>i.id===x.id?{...i,available:e.target.checked}:i))}/> Available</label></div>)}</div><p className="mt-8 text-xs text-amber-700">Demo mode: orders and menu changes are saved only in this browser. Connect a database and staff authentication before live restaurant use.</p></div>}
-{checkout&&<div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 sm:items-center" onClick={()=>setCheckout(false)}><div onClick={e=>e.stopPropagation()} className="max-h-[95vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl"><div className="mb-6 flex items-center justify-between"><h2 className="flex items-center gap-2 text-2xl font-black"><ReceiptText/> Your order</h2><button onClick={()=>setCheckout(false)} aria-label="Close">✕</button></div><p className="mb-5 text-sm text-neutral-500">Table {table||"—"}</p>{items.filter(x=>cart[x.id]).map(x=><div key={x.id} className="flex items-center justify-between border-b py-4"><div><b>{x.name}</b><p className="text-sm text-neutral-500">{cart[x.id]} × {money(x.price)}</p></div><div className="flex items-center gap-3"><button onClick={()=>change(x.id,-1)}><Minus size={17}/></button><b>{cart[x.id]}</b><button onClick={()=>change(x.id,1)}><Plus size={17}/></button></div></div>)}<textarea className="mt-5 w-full rounded-xl border p-3 text-sm" placeholder="Special instructions (optional)" rows={2} value={note} onChange={e=>setNote(e.target.value)}/><p className="mt-5 text-sm font-bold">Add an optional server tip</p><div className="mt-2 flex gap-2">{[0,5,10,15].map(n=><button key={n} onClick={()=>setTip(n)} className={`flex-1 rounded-xl border py-3 text-sm font-bold ${tip===n?"border-neutral-950 bg-neutral-950 text-white":""}`}>{n===0?"No tip":n+"%"}</button>)}</div><div className="mt-6 space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(subtotal)}</span></div><div className="flex justify-between"><span>Tip</span><span>{money(Math.round(subtotal*tip/100))}</span></div><div className="flex justify-between border-t pt-4 text-xl font-black"><span>Total</span><span>{money(total)}</span></div></div><button disabled={!count||!table} onClick={place} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-neutral-950 py-4 font-bold text-white disabled:opacity-40">Place order <ArrowRight size={18}/></button><p className="mt-3 text-center text-xs text-neutral-400">Payment is handled at the restaurant.</p></div></div>}</main>
+import Link from "next/link";
+import {
+  ArrowRight,
+  BellRing,
+  BookOpen,
+  ChefHat,
+  ReceiptText,
+  ScanLine,
+} from "lucide-react";
+import { Header, Brand } from "./components/chrome";
+
+export default function Home() {
+  return (
+    <div className="site">
+      <Header />
+      <main id="content">
+        <section className="hero">
+          <div className="hero-copy">
+            <p className="eyebrow">
+              <span className="dot" /> Restaurant ordering & management
+            </p>
+            <h1>
+              Good service
+              <br />
+              starts at the <em>table.</em>
+            </h1>
+            <p className="lede">
+              Give guests a menu they can order from. Bring your dining room,
+              kitchen and cashier together in one workspace.
+            </p>
+            <div className="actions">
+              <Link className="btn primary" href="/register">
+                Create a restaurant <ArrowRight size={17} />
+              </Link>
+              <Link className="btn" href="/staff">
+                Open staff workspace
+              </Link>
+            </div>
+          </div>
+          <div className="service-board">
+            <div className="board-title">
+              <span className="tiny">The service flow</span>
+              <UtensilRule />
+            </div>
+            {[
+              {
+                Icon: BookOpen,
+                title: "Menu",
+                body: "Guests browse and order at their table.",
+              },
+              {
+                Icon: ChefHat,
+                title: "Kitchen",
+                body: "Staff prepare, track and serve each order.",
+              },
+              {
+                Icon: ReceiptText,
+                title: "Checkout",
+                body: "The cashier settles one itemized bill.",
+              },
+            ].map(({ Icon, title, body }) => (
+              <div className="board-row" key={title}>
+                <span className="board-icon">
+                  <Icon size={25} />
+                </span>
+                <div>
+                  <h2>{title}</h2>
+                  <p>{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="guest-prompt">
+          <span className="square-icon">
+            <ScanLine size={27} />
+          </span>
+          <div>
+            <h2>Dining at a restaurant?</h2>
+            <p>
+              Scan the QR code on your table to open its menu. Ask your waiter
+              to connect you to the table before ordering.
+            </p>
+          </div>
+        </section>
+      </main>
+      <footer className="footer">
+        <Brand />
+        <span>Restaurant service, from menu to receipt.</span>
+      </footer>
+    </div>
+  );
+}
+function UtensilRule() {
+  return <BellRing size={18} aria-hidden />;
 }

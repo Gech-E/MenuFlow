@@ -1,14 +1,19 @@
-"use client";
-import {useEffect,useState} from "react";
-import {createClient} from "@/utils/supabase/client";
-type Menu={id:string;name:string;description:string;category:string;price:number;emoji:string};
-const money=(n:number)=>n.toLocaleString("en-ET")+" ETB";
-export default function LiveMenu(){
- const [items,setItems]=useState<Menu[]>([]),[cart,setCart]=useState<Record<string,number>>({}),[table,setTable]=useState("1"),[tip,setTip]=useState(0),[note,setNote]=useState(""),[busy,setBusy]=useState(false),[message,setMessage]=useState(""),[category,setCategory]=useState("All");
- useEffect(()=>{const t=new URLSearchParams(window.location.search).get("table");if(t&&/^\d{1,3}$/.test(t))setTable(t);createClient().from("menu_items").select("id,name,description,category,price,emoji").order("category").then(({data,error})=>{if(error)setMessage("Menu unavailable. Ask staff to configure the database.");else setItems(data||[])})},[]);
- const subtotal=items.reduce((s,x)=>s+Number(x.price)*(cart[x.id]||0),0),count=Object.values(cart).reduce((a,b)=>a+b,0);
- const change=(id:string,d:number)=>setCart(c=>({...c,[id]:Math.min(20,Math.max(0,(c[id]||0)+d))}));
- async function submit(){setBusy(true);setMessage("");try{const {data,error}=await createClient().rpc("place_order",{p_slug:"demo",p_table:Number(table),p_items:items.filter(x=>cart[x.id]).map(x=>({id:x.id,qty:cart[x.id]})),p_tip_percent:tip,p_note:note});if(error)throw error;setCart({});setNote("");setTip(0);setMessage("Order received! Reference: "+String(data).slice(0,8).toUpperCase())}catch(e){setMessage(e instanceof Error?e.message:"Unable to place order")}finally{setBusy(false)}}
- const categories=["All",...new Set(items.map(x=>x.category))];
- return <main className="mx-auto max-w-5xl px-5 py-8"><header className="flex items-center justify-between"><a href="/" className="text-2xl font-black">MenuFlow<span className="text-emerald-600">.</span></a><span className="rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">LIVE ORDERING</span></header><section className="py-12"><h1 className="text-4xl font-black tracking-tight md:text-6xl">What looks good today?</h1><p className="mt-3 text-neutral-500">Browse the menu and order directly from your table.</p><label className="mt-5 inline-flex items-center gap-3 rounded-xl border bg-white p-3">Table number <input aria-label="Table number" inputMode="numeric" className="w-14 border-b text-center" value={table} onChange={e=>setTable(e.target.value.replace(/\D/g,"").slice(0,3))}/></label></section>{message&&<div role="status" className="mb-6 rounded-xl bg-emerald-50 p-4 text-sm">{message}</div>}<div className="mb-6 flex flex-wrap gap-2">{categories.map(c=><button key={c} onClick={()=>setCategory(c)} className={`rounded-full px-4 py-2 text-sm ${category===c?"bg-black text-white":"border bg-white"}`}>{c}</button>)}</div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{items.filter(x=>category==="All"||x.category===category).map(x=><article key={x.id} className="rounded-3xl border bg-white p-5"><div className="flex h-28 items-center justify-center rounded-2xl bg-stone-100 text-6xl">{x.emoji}</div><p className="mt-4 text-xs font-bold uppercase text-emerald-700">{x.category}</p><h2 className="mt-1 text-xl font-bold">{x.name}</h2><p className="mt-2 min-h-10 text-sm text-neutral-500">{x.description}</p><div className="mt-4 flex items-center justify-between"><b>{money(Number(x.price))}</b><div className="flex items-center gap-3"><button aria-label="Decrease" onClick={()=>change(x.id,-1)} className="rounded-full border px-3 py-1">−</button><b>{cart[x.id]||0}</b><button aria-label="Increase" onClick={()=>change(x.id,1)} className="rounded-full bg-black px-3 py-1 text-white">+</button></div></div></article>)}</div><section className="my-10 rounded-3xl border bg-white p-6"><h2 className="text-2xl font-black">Your bill · {count} items</h2><textarea maxLength={500} className="mt-5 w-full rounded-xl border p-3" placeholder="Special instructions (optional)" value={note} onChange={e=>setNote(e.target.value)}/><p className="mt-5 text-sm font-semibold">Optional server tip</p><div className="mt-2 flex gap-2">{[0,5,10,15].map(n=><button key={n} onClick={()=>setTip(n)} className={`flex-1 rounded-xl border py-3 text-sm ${tip===n?"bg-black text-white":""}`}>{n}%</button>)}</div><div className="mt-6 flex justify-between"><span>Subtotal</span><b>{money(subtotal)}</b></div><div className="mt-2 flex justify-between"><span>Tip</span><b>{money(Math.round(subtotal*tip/100))}</b></div><div className="mt-4 flex justify-between border-t pt-4 text-xl font-black"><span>Total</span><span>{money(subtotal+Math.round(subtotal*tip/100))}</span></div><button disabled={!count||busy||!Number(table)||Number(table)>999} onClick={submit} className="mt-6 w-full rounded-xl bg-black p-4 font-semibold text-white disabled:opacity-40">{busy?"Submitting...":"Place order"}</button><p className="mt-3 text-center text-xs text-neutral-500">Pay at the restaurant. No online payment collected.</p></section></main>
+import { ScanLine } from "lucide-react";
+import { Header } from "../components/chrome";
+export default function Live() {
+  return (
+    <div className="site">
+      <Header />
+      <main className="narrow" id="content">
+        <div className="square-icon">
+          <ScanLine />
+        </div>
+        <h1>Scan your table code</h1>
+        <p className="lede">
+          Use the QR code printed at your table to open the restaurant menu. If
+          your code led here, ask a member of staff for a current code.
+        </p>
+      </main>
+    </div>
+  );
 }
